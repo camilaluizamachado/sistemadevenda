@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_VENDAS 100
-
 typedef struct {
     int id;
     char nome[50];
@@ -16,7 +14,8 @@ typedef struct {
     float valor;
 } Produto;
 
-typedef struct Venda {
+typedef struct {
+    int idVenda;
     Cliente cliente;
     Produto produto;
     int quantidadeVendida;
@@ -35,25 +34,40 @@ typedef struct NodeCliente {
     struct NodeCliente* direita;
 } NodeCliente;
 
+typedef struct NodeVenda {
+    Venda venda;
+    struct NodeVenda* esquerda;
+    struct NodeVenda* direita;
+    int altura;
+} NodeVenda;
+
+
 NodeProduto* raizProduto = NULL;
 NodeCliente* raizCliente = NULL;
-Venda vendas[MAX_VENDAS];
-int totalVendas = 0;
+NodeVenda* raizVenda = NULL;
 
-// Funções para produtos
+int proximoIdVenda = 1;
+
 NodeProduto* inserirProduto(NodeProduto* raiz, Produto produto);
 void exibirProdutosInOrdem(NodeProduto* raiz);
 Produto* buscarProduto(NodeProduto* raiz, int id);
 void liberarProdutos(NodeProduto* raiz);
 
-// Funções para clientes
 NodeCliente* inserirCliente(NodeCliente* raiz, Cliente cliente);
 void exibirClientesInOrdem(NodeCliente* raiz);
 Cliente* buscarCliente(NodeCliente* raiz, int id);
 NodeCliente* excluirCliente(NodeCliente* raiz, int id);
 void liberarClientes(NodeCliente* raiz);
 
-// Funções de vendas
+int altura(NodeVenda* N);
+int max(int a, int b);
+NodeVenda* novaVendaNode(Venda venda);
+NodeVenda* rotacaoDireita(NodeVenda* y);
+NodeVenda* rotacaoEsquerda(NodeVenda* x);
+int fatorBalanceamento(NodeVenda* N);
+NodeVenda* inserirVenda(NodeVenda* node, Venda venda);
+void liberarVendas(NodeVenda* raiz);
+
 void realizarVenda();
 void mostrarVendaMaiorValor();
 void mostrarQuantidadeProdutos();
@@ -64,6 +78,7 @@ int main() {
     menu();
     liberarProdutos(raizProduto);
     liberarClientes(raizCliente);
+    liberarVendas(raizVenda);
     return 0;
 }
 
@@ -89,7 +104,7 @@ void menu() {
                 printf("Digite o ID do produto: ");
                 scanf("%d", &novoProduto.id);
                 if (buscarProduto(raizProduto, novoProduto.id) != NULL) {
-                    printf("Já existe um produto com esse ID!\n");
+                    printf("Jï¿½ existe um produto com esse ID!\n");
                     break;
                 }
                 printf("Digite o nome do produto: ");
@@ -97,13 +112,13 @@ void menu() {
                 printf("Digite a quantidade em estoque: ");
                 scanf("%d", &novoProduto.quantidade);
                 if (novoProduto.quantidade < 0) {
-                    printf("A quantidade não pode ser negativa!\n");
+                    printf("A quantidade nï¿½o pode ser negativa!\n");
                     break;
                 }
-                printf("Digite o valor unitário: ");
+                printf("Digite o valor unitï¿½rio: ");
                 scanf("%f", &novoProduto.valor);
                 if (novoProduto.valor < 0) {
-                    printf("O valor não pode ser negativo!\n");
+                    printf("O valor nï¿½o pode ser negativo!\n");
                     break;
                 }
                 raizProduto = inserirProduto(raizProduto, novoProduto);
@@ -120,7 +135,7 @@ void menu() {
                 printf("Digite o ID do cliente: ");
                 scanf("%d", &novoCliente.id);
                 if (buscarCliente(raizCliente, novoCliente.id) != NULL) {
-                    printf("Já existe um cliente com esse ID!\n");
+                    printf("Jï¿½ existe um cliente com esse ID!\n");
                     break;
                 }
                 printf("Digite o nome do cliente: ");
@@ -130,7 +145,7 @@ void menu() {
             }
             case 5: {
                 int id;
-                printf("Digite o ID do cliente a ser excluído: ");
+                printf("Digite o ID do cliente a ser excluï¿½do: ");
                 scanf("%d", &id);
                 raizCliente = excluirCliente(raizCliente, id);
                 break;
@@ -148,12 +163,11 @@ void menu() {
                 printf("Saindo...\n");
                 break;
             default:
-                printf("Opção inválida!\n");
+                printf("Opï¿½ï¿½o invï¿½lida!\n");
         }
     } while (opcao != 0);
 }
 
-// Funções para produtos
 NodeProduto* inserirProduto(NodeProduto* raiz, Produto produto) {
     if (raiz == NULL) {
         NodeProduto* novo = (NodeProduto*)malloc(sizeof(NodeProduto));
@@ -197,7 +211,6 @@ void liberarProdutos(NodeProduto* raiz) {
     }
 }
 
-// Funções para clientes
 NodeCliente* inserirCliente(NodeCliente* raiz, Cliente cliente) {
     if (raiz == NULL) {
         NodeCliente* novo = (NodeCliente*)malloc(sizeof(NodeCliente));
@@ -241,7 +254,6 @@ NodeCliente* excluirCliente(NodeCliente* raiz, int id) {
     } else if (id > raiz->cliente.id) {
         raiz->direita = excluirCliente(raiz->direita, id);
     } else {
-        // Cliente encontrado
         if (raiz->esquerda == NULL) {
             NodeCliente* temp = raiz->direita;
             free(raiz);
@@ -251,7 +263,6 @@ NodeCliente* excluirCliente(NodeCliente* raiz, int id) {
             free(raiz);
             return temp;
         }
-        // Cliente com dois filhos
         NodeCliente* temp = raiz->direita;
         while (temp && temp->esquerda != NULL) {
             temp = temp->esquerda;
@@ -270,19 +281,96 @@ void liberarClientes(NodeCliente* raiz) {
     }
 }
 
-// Funções de vendas
-void realizarVenda() {
-    if (totalVendas >= MAX_VENDAS) {
-        printf("Limite de vendas atingido!\n");
-        return;
+int altura(NodeVenda* N) {
+    if (N == NULL)
+        return 0;
+    return N->altura;
+}
+
+int max(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+NodeVenda* novaVendaNode(Venda venda) {
+    NodeVenda* node = (NodeVenda*)malloc(sizeof(NodeVenda));
+    node->venda = venda;
+    node->esquerda = NULL;
+    node->direita = NULL;
+    node->altura = 1;
+    return (node);
+}
+
+NodeVenda* rotacaoDireita(NodeVenda* y) {
+    NodeVenda* x = y->esquerda;
+    NodeVenda* T2 = x->direita;
+
+    x->direita = y;
+    y->esquerda = T2;
+
+    y->altura = max(altura(y->esquerda), altura(y->direita)) + 1;
+    x->altura = max(altura(x->esquerda), altura(x->direita)) + 1;
+
+    return x;
+}
+
+NodeVenda* rotacaoEsquerda(NodeVenda* x) {
+    NodeVenda* y = x->direita;
+    NodeVenda* T2 = y->esquerda;
+
+    y->esquerda = x;
+    x->direita = T2;
+
+    x->altura = max(altura(x->esquerda), altura(x->direita)) + 1;
+    y->altura = max(altura(y->esquerda), altura(y->direita)) + 1;
+
+    return y;
+}
+
+int fatorBalanceamento(NodeVenda* N) {
+    if (N == NULL)
+        return 0;
+    return altura(N->esquerda) - altura(N->direita);
+}
+
+NodeVenda* inserirVenda(NodeVenda* node, Venda venda) {
+    if (node == NULL)
+        return (novaVendaNode(venda));
+
+    if (venda.valorTotal < node->venda.valorTotal)
+        node->esquerda = inserirVenda(node->esquerda, venda);
+    else
+        node->direita = inserirVenda(node->direita, venda);
+
+    node->altura = 1 + max(altura(node->esquerda), altura(node->direita));
+
+    int balance = fatorBalanceamento(node);
+
+    if (balance > 1 && venda.valorTotal < node->esquerda->venda.valorTotal)
+        return rotacaoDireita(node);
+
+    if (balance < -1 && venda.valorTotal >= node->direita->venda.valorTotal)
+        return rotacaoEsquerda(node);
+
+    if (balance > 1 && venda.valorTotal >= node->esquerda->venda.valorTotal) {
+        node->esquerda = rotacaoEsquerda(node->esquerda);
+        return rotacaoDireita(node);
+    }
+    if (balance < -1 && venda.valorTotal < node->direita->venda.valorTotal) {
+        node->direita = rotacaoDireita(node->direita);
+        return rotacaoEsquerda(node);
     }
 
+    return node;
+}
+
+
+void realizarVenda() {
     int idCliente, idProduto, quantidade;
     printf("Digite o ID do cliente: ");
     scanf("%d", &idCliente);
     Cliente* cliente = buscarCliente(raizCliente, idCliente);
     if (cliente == NULL) {
-        printf("Cliente não encontrado ou excluído!\n");
+        printf("Cliente nï¿½o encontrado ou excluï¿½do!\n");
         return;
     }
 
@@ -290,57 +378,60 @@ void realizarVenda() {
     scanf("%d", &idProduto);
     Produto* produto = buscarProduto(raizProduto, idProduto);
     if (produto == NULL) {
-        printf("Produto não encontrado!\n");
+        printf("Produto nï¿½o encontrado!\n");
         return;
     }
 
     printf("Digite a quantidade a ser vendida: ");
     scanf("%d", &quantidade);
     if (quantidade <= 0 || quantidade > produto->quantidade) {
-        printf("Quantidade inválida ou estoque insuficiente!\n");
+        printf("Quantidade invï¿½lida ou estoque insuficiente!\n");
         return;
     }
 
     produto->quantidade -= quantidade;
 
     Venda novaVenda;
-    novaVenda.cliente = *cliente; // Cópia do cliente no momento da venda
-    novaVenda.produto = *produto;   // Cópia do produto no momento da venda
+    novaVenda.idVenda = proximoIdVenda++;
+    novaVenda.cliente = *cliente;
+    novaVenda.produto = *produto;
     novaVenda.quantidadeVendida = quantidade;
     novaVenda.valorTotal = quantidade * produto->valor;
 
-    vendas[totalVendas++] = novaVenda;
-    printf("Venda realizada com sucesso! Total: R$ %.2f\n", novaVenda.valorTotal);
+    raizVenda = inserirVenda(raizVenda, novaVenda);
+    printf("Venda (ID: %d) realizada com sucesso! Total: R$ %.2f\n", novaVenda.idVenda, novaVenda.valorTotal);
 }
 
 void mostrarVendaMaiorValor() {
-    if (totalVendas == 0) {
+    if (raizVenda == NULL) {
         printf("Nenhuma venda registrada!\n");
         return;
     }
 
-    float maiorValor = 0;
-    Venda* vendaMaior = NULL;
-
-    for (int i = 0; i < totalVendas; i++) {
-        if (vendas[i].valorTotal > maiorValor) {
-            maiorValor = vendas[i].valorTotal;
-            vendaMaior = &vendas[i];
-        }
+    NodeVenda* atual = raizVenda;
+    while (atual->direita != NULL) {
+        atual = atual->direita;
     }
 
-    if (vendaMaior != NULL) {
-        printf("Venda com o maior valor:\n");
-        printf("Cliente: %s (ID: %d)\n", vendaMaior->cliente.nome, vendaMaior->cliente.id);
-        printf("Produto: %s (ID: %d)\n", vendaMaior->produto.nome, vendaMaior->produto.id);
-        printf("Quantidade: %d\n", vendaMaior->quantidadeVendida);
-        printf("Valor Total: R$ %.2f\n", vendaMaior->valorTotal);
+    printf("Venda com o maior valor:\n");
+    printf("Venda ID: %d\n", atual->venda.idVenda);
+    printf("Cliente: %s (ID: %d)\n", atual->venda.cliente.nome, atual->venda.cliente.id);
+    printf("Produto: %s (ID: %d)\n", atual->venda.produto.nome, atual->venda.produto.id);
+    printf("Quantidade: %d\n", atual->venda.quantidadeVendida);
+    printf("Valor Total: R$ %.2f\n", atual->venda.valorTotal);
+}
+
+void liberarVendas(NodeVenda* raiz) {
+    if (raiz != NULL) {
+        liberarVendas(raiz->esquerda);
+        liberarVendas(raiz->direita);
+        free(raiz);
     }
 }
 
+
 void mostrarQuantidadeProdutos() {
     int totalProdutos = 0;
-    // Função recursiva para contar produtos
     void contarProdutos(NodeProduto* raiz) {
         if (raiz != NULL) {
             totalProdutos += raiz->produto.quantidade;
